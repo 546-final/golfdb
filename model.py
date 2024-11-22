@@ -55,6 +55,3 @@ class EventDetector(nn.Module):
         out = out.view(batch_size*timesteps,9)
 
         return out
-
-
-

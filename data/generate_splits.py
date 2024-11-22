@@ -1,7 +1,12 @@
 from scipy.io import loadmat
 import pandas as pd
+import os
 
-x = loadmat('golfDB.mat')
+# Set the working directory to the location of this script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+os.chdir(script_dir)
+
+x = loadmat("golfDB.mat")
 l = list(x['golfDB'][0])
 d = dict()
 for idx, k in enumerate(l):

@@ -48,6 +48,11 @@ def eval(model, split, seq_length, n_cpu, disp):
 
 
 if __name__ == '__main__':
+    
+    # Set the working directory to the location of this script
+    import os
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(script_dir)
 
     split = 1
     seq_length = 64
@@ -66,5 +71,3 @@ if __name__ == '__main__':
     model.eval()
     PCE = eval(model, split, seq_length, n_cpu, True)
     print('Average PCE: {}'.format(PCE))
-
-

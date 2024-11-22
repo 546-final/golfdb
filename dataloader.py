@@ -26,6 +26,9 @@ class GolfDB(Dataset):
         images, labels = [], []
         cap = cv2.VideoCapture(osp.join(self.vid_dir, '{}.mp4'.format(a['id'])))
 
+        if not cap.isOpened():
+            raise ValueError(f"Unable to open video file {a['id']}")
+
         if self.train:
             # random starting position, sample 'seq_length' frames
             start_frame = np.random.randint(events[-1] + 1)
@@ -67,6 +70,8 @@ class ToTensor(object):
     """Convert ndarrays in sample to Tensors."""
     def __call__(self, sample):
         images, labels = sample['images'], sample['labels']
+        if len(images.shape) != 4:
+            raise ValueError(f"Expected 4D array (frames, height, width, channels), got shape {images.shape}")
         images = images.transpose((0, 3, 1, 2))
         return {'images': torch.from_numpy(images).float().div(255.),
                 'labels': torch.from_numpy(labels).long()}
