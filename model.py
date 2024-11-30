@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from MobileNetV2 import MobileNetV2
-
+from .MobileNetV2 import MobileNetV2
+import os
 
 class EventDetector(nn.Module):
     def __init__(self, pretrain, width_mult, lstm_layers, lstm_hidden, bidirectional=True, dropout=True):
@@ -14,7 +14,10 @@ class EventDetector(nn.Module):
         self.dropout = dropout
 
         net = MobileNetV2(width_mult=width_mult)
-        state_dict_mobilenet = torch.load('mobilenet_v2.pth.tar')
+
+        mobilenet_path = os.path.join(os.path.dirname(__file__), 'mobilenet_v2.pth.tar')
+        state_dict_mobilenet = torch.load(mobilenet_path)
+
         if pretrain:
             net.load_state_dict(state_dict_mobilenet)
 
