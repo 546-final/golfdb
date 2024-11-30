@@ -69,6 +69,13 @@ class GolfDB(Dataset):
 class ToTensor(object):
     """Convert ndarrays in sample to Tensors."""
     def __call__(self, sample):
+        if isinstance(sample, dict) and 'labels' not in sample:
+            # For 
+            image = sample['images']
+            if isinstance(image, np.ndarray):
+                return {'images': torch.from_numpy(image).float(), 
+                       'name': sample.get('name', '')}
+            
         images, labels = sample['images'], sample['labels']
         if len(images.shape) != 4:
             raise ValueError(f"Expected 4D array (frames, height, width, channels), got shape {images.shape}")
