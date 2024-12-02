@@ -1,4 +1,7 @@
-from model import EventDetector
+try:
+    from .model import EventDetector
+except ImportError:
+    from model import EventDetector
 import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms

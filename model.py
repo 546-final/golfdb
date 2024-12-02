@@ -1,7 +1,10 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from .MobileNetV2 import MobileNetV2
+try:
+    from .MobileNetV2 import MobileNetV2
+except ImportError:
+    from MobileNetV2 import MobileNetV2
 import os
 
 class EventDetector(nn.Module):
