@@ -121,8 +121,9 @@ if __name__ == '__main__':
         cap.set(cv2.CAP_PROP_POS_FRAMES, e)
         _, img = cap.read()
         cv2.putText(img, '{:.3f}'.format(confidence[i]), (20, 20), cv2.FONT_HERSHEY_DUPLEX, 0.75, (0, 0, 255))
-        cv2.imshow(event_names[i], img)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        #cv2.imshow(event_names[i], img)
+        #cv2.waitKey(0)
+        #cv2.destroyAllWindows()
+        cv2.imwrite(f'_event_{i}.png', img)
 
 
