@@ -7,7 +7,7 @@ from eval import ToTensor, Normalize
 from model import EventDetector
 import numpy as np
 import torch.nn.functional as F
-
+import matplotlib.pyplot as plt
 #from pytorch_grad_cam import GradCAM, HiResCAM, ScoreCAM, GradCAMPlusPlus, AblationCAM, XGradCAM, EigenCAM, FullGrad
 from pytorch_grad_cam.base_cam import BaseCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
@@ -51,14 +51,14 @@ class GradCAM(BaseCAM):
         else:
             raise ValueError("Invalid input_tensor shape. Only 2D or 3D images are supported.")
 
-event_names = {
+EVENT_NAMES = {
     0: 'Address',
     1: 'Toe-up',
-    2: 'Mid-backswing (arm parallel)',
+    2: 'Mid-backswing-1',
     3: 'Top',
-    4: 'Mid-downswing (arm parallel)',
+    4: 'Mid-downswing-2',
     5: 'Impact',
-    6: 'Mid-follow-through (shaft parallel)',
+    6: 'Mid-follow-through',
     7: 'Finish'
 }
 
@@ -127,6 +127,90 @@ def create_labeled_image_grid(images, filename):
     
     cv2.imwrite(filename+'.jpg', grid_img)
     return grid_img
+
+
+def create_detailed_image_grid(images, 
+                                row_labels=None, 
+                                col_labels=None, 
+                                figsize=(20, 15), 
+                                spacing=0.1, 
+                                title=None, 
+                                filename=None):
+    """
+    Create a detailed image grid with row and column labels.
+    
+    Args:
+    - images: 2D list of images (rows x columns)
+    - row_labels: List of labels for rows
+    - col_labels: Dictionary of column labels
+    - figsize: Figure size (width, height) in inches
+    - spacing: Spacing between subplots
+    - title: Overall figure title
+    - filename: Filename to save the figure
+    
+    Returns:
+    - matplotlib figure object
+    """
+    # Determine grid dimensions
+    rows = len(images)
+    cols = len(images[0])
+    
+    # Create figure with specified size and spacing
+    fig, axes = plt.subplots(rows, cols, figsize=figsize, 
+                              gridspec_kw={'wspace': spacing, 'hspace': spacing})
+    
+    # Ensure axes is always 2D array
+    if rows == 1:
+        axes = axes.reshape(1, -1)
+    elif cols == 1:
+        axes = axes.reshape(-1, 1)
+    
+    # Default column labels
+    if col_labels is None:
+        col_labels = EVENT_NAMES
+    
+    # Plot images
+    for i in range(rows):
+        for j in range(cols):
+            ax = axes[i, j]
+            
+            # Handle potentially missing images
+            if i < len(images) and j < len(images[i]):
+                img = images[i][j]
+                
+                # Handle different image formats
+                if img.ndim == 2:  # Grayscale
+                    ax.imshow(img, cmap='gray')
+                elif img.shape[2] == 3:  # RGB
+                    ax.imshow(img)
+                elif img.shape[2] == 4:  # RGBA
+                    ax.imshow(img)
+                
+                # Add column labels to top row
+                if i == 0:
+                    ax.set_title(col_labels.get(j, f'Column {j}'), fontsize=13, fontweight='bold')
+                
+                # Remove ticks
+                ax.set_xticks([])
+                ax.set_yticks([])
+            
+            # Add row labels to first column
+            if j == 0 and row_labels:
+                ax.set_ylabel(row_labels[i], rotation=90, fontsize=13, fontweight='bold')
+    
+    # Add overall title if specified
+    if title:
+        fig.suptitle(title, fontsize=16)
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save if filename provided
+    if filename:
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+    
+    return fig
+
 
 def visualize_gradcam(model, dl, device, seq_length, args):
     """
@@ -339,6 +423,93 @@ def visualize_gradcam_grid(model, dl, device, seq_length, args):
     cap.release()
 
 
+def get_gradcam_heatmap(model, dl, device, seq_length, args):
+    """
+    Perform inference and generate Grad-CAM visualizations for SwingNet model
+    
+    Args:
+    - model: Trained SwingNet model
+    - dl: DataLoader with input images
+    - device: Torch device (cuda/cpu)
+    - seq_length: Number of frames to process in each batch
+    - args: Arguments containing video path
+    """
+    model.to(device)
+    model.eval()
+    
+    # Identify target layers for Grad-CAM (depends on the model architecture)
+    target_layers = [model.cnn[-2].conv[-1], model.cnn[-3].conv[-1], model.cnn[-1][-1]]  
+    
+    # Prepare Grad-CAM
+    cam = GradCAM(model=model, target_layers=target_layers)
+    
+    for sample in dl:
+        images = sample['images']
+        batch_probs = []
+        batch_cams = []
+        
+        # Process images in batches due to memory constraints
+        for batch in range(0, images.shape[1], seq_length):
+            end_idx = min(batch + seq_length, images.shape[1])
+            image_batch = images[:, batch:end_idx, :, :, :]
+            
+            # Flatten spatial dimensions for CAM
+            B, T, C, H, W = image_batch.shape
+            image_batch_flat = image_batch.view(B, T, C, H, W)
+            
+            targets = None 
+            
+            # Run inference and generate Grad-CAM
+            logits = model(image_batch.to(device))
+            probs = F.softmax(logits.data, dim=1).cpu().numpy()
+            
+            # Generate CAM for each frame
+            model.train()
+            grayscale_cams = cam(input_tensor=image_batch_flat.to(device), targets=targets)
+            model.eval()
+            
+            batch_probs.append(probs)
+            batch_cams.append(grayscale_cams)
+        
+        # Combine probabilities and CAMs
+        probs = np.concatenate(batch_probs, axis=0)
+        cams = np.concatenate(batch_cams, axis=0)
+        
+        # Visualize top predictions
+        events = np.argmax(probs, axis=0)[:-1]
+        confidences = [probs[e, i] for i, e in enumerate(events)]
+        
+        print('Predicted event frames:', events)
+        print('Confidence:', [np.round(c, 3) for c in confidences])
+
+
+        cap = cv2.VideoCapture(args.path)
+        raw_images = []
+        grad_cam_heatmaps = []
+        for i, event_frame in enumerate(events):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, event_frame)
+            ret, frame = cap.read()
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            raw_images.append(frame/255.0)
+            if ret:
+                # Resize CAM to match original image
+                cam_resized = cv2.resize(cams[event_frame], (frame.shape[1], frame.shape[0]))
+                visualization = show_cam_on_image(frame/255.0, cam_resized, use_rgb=True)
+
+                grad_cam_heatmaps.append(visualization)
+        
+
+        create_detailed_image_grid([raw_images, grad_cam_heatmaps],
+                                row_labels=['RGB', 'Grad-Cam'], 
+                                col_labels=None, 
+                                figsize=(20, 5), 
+                                spacing=0.05, 
+                                title=None, 
+                                filename='test3.png')
+        break  # Process first batch
+
+    
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path', help='Path to video that you want to test', default='test_video.mp4')
@@ -371,4 +542,5 @@ if __name__ == '__main__':
     model.load_state_dict(save_dict['model_state_dict'])
 
     #visualize_gradcam(model, dl, device, seq_length, args )
-    visualize_gradcam_grid(model, dl, device, seq_length, args)
+    #visualize_gradcam_grid(model, dl, device, seq_length, args)
+    get_gradcam_heatmap(model, dl, device, seq_length, args)
